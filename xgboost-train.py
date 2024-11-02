@@ -1,5 +1,5 @@
 import joblib
-import lightgbm as lgb
+import xgboost as xgb
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler
@@ -20,11 +20,13 @@ class DateTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
+        # Parse dates and create '屋齡' column
         X = X.copy()
         X['建築完成年月'] = pd.to_datetime(X['建築完成年月'])
         X['交易日期'] = pd.to_datetime(X['交易年'].astype(
             str) + '-' + X['交易月'].astype(str) + '-' + X['交易日'].astype(str))
         X['屋齡'] = (X['交易日期'] - X['建築完成年月']).dt.days
+        # Drop unnecessary columns
         return X.drop(columns=['建築完成年月', '交易年', '交易月', '交易日', '交易日期'])
 
 # Custom Transformer for Boolean Mapping
@@ -60,6 +62,7 @@ preprocessor = ColumnTransformer(
         ('drop_columns', 'drop', columns_to_drop),
         ('boolean_mapping', BooleanMappingTransformer(
             mapping_dict=boolean_columns_mapping), list(boolean_columns_mapping.keys())),
+        # Handle unknown categories in one-hot encoding
         ('one_hot', OneHotEncoder(handle_unknown='ignore'), one_hot_columns),
         ('scaling', StandardScaler(), columns_to_normalize)
     ],
@@ -76,27 +79,29 @@ pipeline = Pipeline([
 X_train_processed = pipeline.fit_transform(X_train)
 y_train_processed = y_train['單價元平方公尺'].values
 
-# Define Dataset for LightGBM
-dtrain = lgb.Dataset(X_train_processed, label=y_train_processed)
+# Define DMatrix for XGBoost
+dtrain = xgb.DMatrix(X_train_processed, label=y_train_processed)
 
 # Set up parameter grid for tuning
+
 param_grid = {
-    'max_depth': [3, 5, 7],
-    'learning_rate': [0.3, 0.1, 0.01],
+    'max_depth': [3, 5, 7],               # Tree depth for base learners
+    'eta': [0.3, 0.1, 0.01],            # Learning rate
+    # Subsample ratio of training instances
     'subsample': [0.8, 1],
-    'colsample_bytree': [0.8, 1],
-    'lambda_l2': [1, 1.5, 2],
-    'lambda_l1': [0, 0.5, 1]
+    'colsample_bytree': [0.8, 1],  # Subsample ratio of columns
+    'lambda': [1, 1.5, 2],                # L2 regularization term
+    'alpha': [0, 0.5, 1]                  # L1 regularization term
 }
+
 
 # Fixed parameters
 fixed_params = {
-    'objective': 'regression',
-    'metric': 'rmse',
-    'boosting_type': 'gbdt'
+    'objective': 'reg:squarederror',
+    'eval_metric': 'rmse'
 }
 
-# Cross-validation parameters
+# Define cross-validation parameters
 early_stopping_rounds = 10
 nfold = 5
 
@@ -109,32 +114,33 @@ best_params = None
 
 def evaluate_params(params):
     # Perform cross-validation with the provided parameters
-    cv_results = lgb.cv(
+    cv_results = xgb.cv(
         params=params,
-        train_set=dtrain,
+        dtrain=dtrain,
         nfold=nfold,
         early_stopping_rounds=early_stopping_rounds,
         seed=42,
         verbose_eval=False
     )
 
-    # Get the best score for the current parameter set
-    mean_rmse = min(cv_results['rmse-mean'])
-    best_iteration = cv_results['rmse-mean'].index(mean_rmse)
+    # Get the best score and iteration for the current parameter set
+    mean_rmse = cv_results['test-rmse-mean'].min()
+    best_iteration = cv_results['test-rmse-mean'].idxmin()
 
+    # Return the score, best iteration, and parameters
     return mean_rmse, best_iteration, params
 
 
 # Generate all parameter combinations
 all_params = [
-    {**fixed_params, 'max_depth': max_depth, 'learning_rate': learning_rate, 'subsample': subsample,
-     'colsample_bytree': colsample_bytree, 'lambda_l2': reg_lambda, 'lambda_l1': reg_alpha}
+    {**fixed_params, 'max_depth': max_depth, 'eta': eta, 'subsample': subsample,
+     'colsample_bytree': colsample_bytree, 'lambda': reg_lambda, 'alpha': reg_alpha}
     for max_depth in param_grid['max_depth']
-    for learning_rate in param_grid['learning_rate']
+    for eta in param_grid['eta']
     for subsample in param_grid['subsample']
     for colsample_bytree in param_grid['colsample_bytree']
-    for reg_lambda in param_grid['lambda_l2']
-    for reg_alpha in param_grid['lambda_l1']
+    for reg_lambda in param_grid['lambda']
+    for reg_alpha in param_grid['alpha']
 ]
 
 # Use ThreadPoolExecutor to run evaluations in parallel
@@ -142,6 +148,8 @@ with ThreadPoolExecutor() as executor:
     futures = {executor.submit(evaluate_params, params)               : params for params in all_params}
     for future in as_completed(futures):
         mean_rmse, best_iteration, params = future.result()
+
+        print("future.result():", future.result())
 
         # Update best score and parameters if the current score is better
         if mean_rmse < best_score:
@@ -153,21 +161,24 @@ print("Best Parameters:", best_params)
 print("Best RMSE:", best_score)
 
 # Train final model with best parameters
-final_model = lgb.LGBMRegressor(
+final_model = xgb.XGBRegressor(
     **best_params
 )
 final_model.fit(X_train_processed, y_train_processed)
 
-# Save the model
-joblib.dump(final_model, 'model.pkl')
 
-# Predict on X_test.csv
+model = final_model
+
+# Save the model
+joblib.dump(model, 'xgboost-model.pkl')
+
+# Predict on X_test.csv, the format should be Id, 單價元平方公尺, and the number should be a float with one decimal place
 X_test = pd.read_csv('data/X_test.csv')
 X_test_processed = pipeline.transform(X_test)
-y_test = final_model.predict(X_test_processed)
+y_test = model.predict(X_test_processed)
 y_test_df = pd.DataFrame(y_test, columns=['單價元平方公尺'])
 y_test_df['Id'] = X_test['Id']
 y_test_df = y_test_df[['Id', '單價元平方公尺']]
-# Print to float with one decimal place
+# print to float with one decimal place
 y_test_df['單價元平方公尺'] = y_test_df['單價元平方公尺'].round(1)
 y_test_df.to_csv('data/y_test.csv', index=False)
