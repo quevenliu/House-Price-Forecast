@@ -6,6 +6,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.base import BaseEstimator, TransformerMixin
 import pandas as pd
+from tqdm import tqdm
 
 # Load data
 X_train = pd.read_csv('data/X_train.csv')
@@ -80,11 +81,10 @@ dtrain = lgb.Dataset(X_train_processed, label=y_train_processed)
 
 # Set up parameter grid for tuning
 param_grid = {
-    'num_leaves': [64, 128, 256, 512],
-    'learning_rate': [0.3, 0.1, 0.01],
+    'num_leaves': [64, 128, 256],
+    'learning_rate': [0.3, 0.1],
     'subsample': [0.8, 1],
     'colsample_bytree': [0.8, 1],
-    'lambda_l2': [1, 1.5, 2],
     'lambda_l1': [0, 0.5, 1]
 }
 
@@ -127,12 +127,11 @@ def evaluate_params(params):
 # Generate all parameter combinations
 all_params = [
     {**fixed_params, 'num_leaves': num_leaves, 'learning_rate': learning_rate, 'subsample': subsample,
-     'colsample_bytree': colsample_bytree, 'lambda_l2': reg_lambda, 'lambda_l1': reg_alpha}
+     'colsample_bytree': colsample_bytree, 'lambda_l1': reg_alpha}
     for num_leaves in param_grid['num_leaves']
     for learning_rate in param_grid['learning_rate']
     for subsample in param_grid['subsample']
     for colsample_bytree in param_grid['colsample_bytree']
-    for reg_lambda in param_grid['lambda_l2']
     for reg_alpha in param_grid['lambda_l1']
 ]
 
@@ -141,7 +140,7 @@ best_score = float("Inf")
 best_params = None
 
 # Sequential evaluation of all parameter combinations
-for params in all_params:
+for params in tqdm(all_params):
     mean_rmse, best_iteration, params = evaluate_params(params)
 
     # Update best score and parameters if the current score is better
@@ -160,7 +159,7 @@ final_model = lgb.LGBMRegressor(
 final_model.fit(X_train_processed, y_train_processed)
 
 # Save the model
-joblib.dump(final_model, 'model.pkl')
+joblib.dump(final_model, 'lgb-model.pkl')
 
 # Predict on X_test.csv
 X_test = pd.read_csv('data/X_test.csv')
