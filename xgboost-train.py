@@ -7,6 +7,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.base import BaseEstimator, TransformerMixin
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
+# from gbf import GBFGenerator # Uncomment this for experiment on GBF
 
 # Load data
 X_train = pd.read_csv('data/X_train.csv')
@@ -59,6 +60,7 @@ columns_to_normalize = ['土地移轉總面積平方公尺', '建物移轉總面
 # Pipeline
 preprocessor = ColumnTransformer(
     transformers=[
+        # ('gbf', GBFGenerator(K=5), ['橫坐標', '縱坐標']), # Uncomment this for experiment on GBF
         ('drop_columns', 'drop', columns_to_drop),
         ('boolean_mapping', BooleanMappingTransformer(
             mapping_dict=boolean_columns_mapping), list(boolean_columns_mapping.keys())),
