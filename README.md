@@ -3,23 +3,31 @@
 Please use virtual environment to run this project in order to reproduce the results.
 
 ## Development Environment
+Python 3.11.4, please download it [here](https://www.python.org/downloads/release/python-3114/).
 
-Windows 11 with support for PowerShell. (The virtual environment setup in this project have to be run based on PowerShell scripts.)
-
-## How to enter virtual environment
-
-The project is using venv for virtual environment. To enter the virtual environment, please run the following command in the project root directory.
-
+Update your pip to the newest version by
 ```bash
-./.venv/Scripts/Activate.ps1
+py -3.11 -m pip install --upgrade pip --user
+```
+
+Please also install pipenv first by
+```bash
+pip install pipenv
 ```
 
 ## How to install dependencies
 
-Once enter the virtual environment, please run the following command to install all the dependencies.
+Please run the following command to install all the dependencies.
 
 ```bash
-pip install -r requirements.txt
+pipenv install
+```
+
+## Enter into virtual environment
+
+Please run the following command to enter into virtual environment.
+```bash
+pipenv shell
 ```
 
 ## How to run the project
