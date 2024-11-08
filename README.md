@@ -15,19 +15,18 @@ Please also install pipenv first by
 pip install pipenv
 ```
 
+## Enter into virtual environment
+
+Please run the following command to enter into virtual environment.
+```bash
+pipenv shell
+```
 ## How to install dependencies
 
 Please run the following command to install all the dependencies.
 
 ```bash
 pipenv install
-```
-
-## Enter into virtual environment
-
-Please run the following command to enter into virtual environment.
-```bash
-pipenv shell
 ```
 
 ## How to run the project
